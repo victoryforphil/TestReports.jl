@@ -78,33 +78,30 @@ from the parsed `manifest` provided.
 function make_testreports_environment(manifest)
     all_deps = get_deps(manifest, "TestReports")
     push!(all_deps, "TestReports")
-    if VERSION >= v"1.7.0"
-        new_manifest = Dict{String, Any}()
-        new_manifest["deps"] = Dict(pkg => manifest["deps"][pkg] for pkg in all_deps)
-        new_manifest["julia_version"] = manifest["julia_version"]
-        new_manifest["manifest_format"] = manifest["manifest_format"]
-        new_project = Dict(
-            "deps" => Dict(
-                "Test" => new_manifest["deps"]["Test"][1]["uuid"],
-                "TestReports" => new_manifest["deps"]["TestReports"][1]["uuid"]
-            )
-        )
-    else
-        new_manifest = Dict(pkg => manifest[pkg] for pkg in all_deps)
-        new_project = Dict(
-            "deps" => Dict(
-                "Test" => new_manifest["Test"][1]["uuid"],
-                "TestReports" => new_manifest["TestReports"][1]["uuid"]
-            )
-        )
-    end
+    
     testreportsenv = mktempdir()
+    
+    # Create a new project with minimal dependencies
+    manifest_dict = VERSION >= v"1.7.0" ? manifest["deps"] : manifest
+    new_project = Dict(
+        "deps" => Dict(
+            "Test" => manifest_dict["Test"][1]["uuid"],
+            "TestReports" => manifest_dict["TestReports"][1]["uuid"]
+        )
+    )
+    
+    # Write project file
     open(joinpath(testreportsenv, "Project.toml"), "w") do io
         Pkg.TOML.print(io, new_project)
     end
-    open(joinpath(testreportsenv, "Manifest.toml"), "w") do io
-        Pkg.TOML.print(io, new_manifest, sorted=true)
+    
+    # Let Pkg handle manifest generation to ensure proper format
+    withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
+        Pkg.activate(testreportsenv) do
+            Pkg.develop(PackageSpec(path=dirname(@__DIR__)))
+        end
     end
+    
     return testreportsenv
 end
 
